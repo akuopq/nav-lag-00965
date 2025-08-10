@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>00965 NAV-Lag 套利助手（完全獨立版）</title>
+<meta name="description" content="00965 NAV-Lag 套利助手（Core 10 / 25 支援）— 完全無外部依賴，單一 HTML 可離線使用。"/>
+<style>
+  :root{--bg:#f8fafc;--card:#fff;--txt:#0f172a;--muted:#475569;--border:#e2e8f0;--chip:#e5e7eb;}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial}
+  .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+  .h1{font-size:22px;font-weight:800;margin:0 0 6px}
+  .muted{color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 2px 10px rgba(0,0,0,.04);padding:16px}
+  .grid{display:grid;gap:12px}
+  @media(min-width:900px){.grid-5{grid-template-columns:repeat(5,1fr)} .grid-3{grid-template-columns:repeat(3,1fr)}}
+  .k{font-size:11px;color:#64748b}
+  .big{font-size:22px;font-weight:700}
+  .chip{display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#eef2ff;font-weight:700}
+  .chip.buy{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+  .chip.sell{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+  .chip.neu{background:#f1f5f9;border-color:#cbd5e1;color:#334155}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input[type="text"],input[type="number"]{width:100%;padding:8px 10px;border-radius:10px;border:1px solid var(--border)}
+  input[type="checkbox"]{width:18px;height:18px}
+  button{padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;cursor:pointer}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-top:1px solid var(--border);text-align:left}
+  th{background:#f1f5f9;color:#334155;font-weight:600}
+  td.num,th.num{text-align:right}
+  code{background:#0f172a;color:#e2e8f0;padding:2px 6px;border-radius:6px}
+  .bar{height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+  .bar>i{display:block;height:100%;background:#0f172a}
+  .note{font-size:12px;color:#64748b;margin-top:6px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--border);font-size:12px}
+  .p-rose{background:#ffe4e6;color:#9f1239;border-color:#fecdd3}
+  .p-orange{background:#ffedd5;color:#9a3412;border-color:#fed7aa}
+  .p-emerald{background:#d1fae5;color:#065f46;border-color:#a7f3d0}
+  .p-emerald2{background:#ecfdf5;color:#065f46;border-color:#bbf7d0}
+  .p-slate{background:#f1f5f9;color:#334155;border-color:#cbd5e1}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header style="margin-bottom:12px">
+      <div class="h1">00965 NAV-Lag 套利助手（Core 10 / 25 支援）</div>
+      <div class="muted">貼上 CSV 或表單編輯，輸入昨日 NAV 與今日開盤價，即時計算理論貢獻、預測 NAV 與 BUY/SELL 訊號。（此版本完全不連外，單檔即可用）</div>
+    </header>
+
+    <!-- Summary -->
+    <section class="card" id="summary">
+      <div class="grid grid-5">
+        <div>
+          <div class="k">開盤%</div>
+          <div class="big" id="openMove">—</div>
+        </div>
+        <div>
+          <div class="k">理論貢獻（p.p.）</div>
+          <div class="muted">未歸一：<b id="pptsRaw">—</b></div>
+          <div class="muted">歸一化：<b id="pptsNorm">—</b></div>
+        </div>
+        <div>
+          <div class="k">預測 NAV（TWD）</div>
+          <div class="muted">未歸一：<b id="navRaw">—</b></div>
+          <div class="muted">歸一化：<b id="navNorm">—</b></div>
+          <div class="muted">最終：<b id="navFinal">—</b></div>
+        </div>
+        <div>
+          <div class="k">盤價溢折</div>
+          <div class="big" id="premium">—</div>
+          <div class="k">與最終預測 NAV 相比</div>
+        </div>
+        <div>
+          <div class="k">最終訊號</div>
+          <div class="chip neu" id="signal">—</div>
+          <div style="margin-top:8px">
+            <div class="row" style="justify-content:space-between">
+              <span class="k">覆蓋度：<b id="coverPct">0%</b></span>
+              <span class="k" id="coverLabel">偏低信心</span>
+            </div>
+            <div class="bar" style="margin-top:6px"><i id="coverBar" style="width:0%"></i></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CSV URL Loader -->
+    <section class="card" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div class="h2" style="font-weight:700">來源一鍵載入（公開 CSV 連結）</div>
+          <div class="muted" style="font-size:13px">表頭需含：<code>ticker,name,ccy,weight,prev,curr,prevFx,currFx</code></div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input id="csvUrl" type="text" placeholder="貼上 CSV 連結（例：https://docs.google.com/.../export?format=csv）"/>
+        <button id="btnLoadCsv">載入</button>
+      </div>
+    </section>
+
+    <!-- Dashboard -->
+    <section class="grid grid-3" style="margin-top:12px">
+      <div class="card">
+        <div class="k">昨日 NAV（TWD）</div>
+        <input id="prevNav" type="number" step="0.001" placeholder="例：20.54"/>
+        <div class="k" style="margin-top:10px">今日開盤價（TWD）</div>
+        <input id="openPrice" type="number" step="0.001" placeholder="例：20.61"/>
+      </div>
+      <div class="card">
+        <div class="k">訊號門檻（偏離%）</div>
+        <div class="row" style="margin-top:6px">
+          <label>BUY ≤ <input id="buyT" type="number" step="0.01" value="0.50" style="width:90px;margin-left:6px"/></label>
+          <label>SELL ≥ <input id="sellT" type="number" step="0.01" value="0.50" style="width:90px;margin-left:6px"/></label>
+        </div>
+        <div class="note">偏離 = 開盤% − 理論貢獻(p.p.)</div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <div>
+            <div class="k">權重合計</div>
+            <div class="big" id="sumWeight">0%</div>
+          </div>
+          <label class="row" style="font-size:13px;color:#334155">
+            <input id="normalize" type="checkbox" style="margin-right:6px"> 權重歸一化至 100%
+          </label>
+        </div>
+        <div class="k" style="margin-top:8px">理論貢獻（p.p.）</div>
+        <div class="big" id="pptsFinal">0.000</div>
+        <div class="note" id="pptsDesc">（以目前 0.00% 權重計算）</div>
+
+        <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+          <div class="k">預測 NAV（TWD）</div>
+          <div class="muted">未歸一化：<b id="navRaw2">—</b></div>
+          <div class="muted">歸一化：<b id="navNorm2">—</b></div>
+          <div class="muted">最終（依勾選）：<b id="navChosen">—</b></div>
+          <div class="note">盤價溢折：<span id="premium2">—</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Grading -->
+    <section class="card" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div class="h2" style="font-weight:700">成分股 NAV‑Lag 強弱分級（套利參考）</div>
+        <div class="row" style="font-size:12px;color:#334155">
+          <span>門檻（%）：</span>
+          <label>強弱≤ <input id="bandStrongNeg" type="number" step="0.1" value="-2" style="width:70px;margin-left:4px"></label>
+          <label>偏弱≤ <input id="bandMildNeg" type="number" step="0.1" value="-1" style="width:70px;margin-left:4px"></label>
+          <label>偏強≥ <input id="bandMild" type="number" step="0.1" value="1" style="width:70px;margin-left:4px"></label>
+          <label>強勢≥ <input id="bandStrong" type="number" step="0.1" value="2" style="width:70px;margin-left:4px"></label>
+        </div>
+      </div>
+      <div style="overflow:auto;margin-top:8px">
+        <table id="rankTable">
+          <thead>
+            <tr>
+              <th>#</th><th>代碼</th><th>名稱</th><th class="num">權重%</th>
+              <th class="num">台幣調整後報酬%</th><th class="num">對 NAV 貢獻(p.p.)</th><th>分級</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="note">說明：依「台幣調整後報酬%（adjRet）」由低→高排序；負值（便宜）在上、正值（偏貴）在下。門檻可調整，作為後續幾天的觀察清單。</div>
+      </div>
+    </section>
+
+    <!-- Table -->
+    <section class="card" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div class="h2" style="font-weight:700">成分股明細（可自由增刪列）</div>
+        <div class="row">
+          <button id="btnAdd">+ 新增一列</button>
+          <span class="note">可擴充到 25 檔或更多</span>
+        </div>
+      </div>
+      <div style="overflow:auto;margin-top:8px">
+        <table id="mainTable">
+          <thead>
+            <tr>
+              <th>代碼</th><th>名稱</th><th>權重%</th><th>幣別</th>
+              <th>前一日收盤</th><th>今日收盤</th>
+              <th>前一日匯率<br/>(TWD/幣別)</th><th>今日匯率<br/>(TWD/幣別)</th>
+              <th class="num">當地報酬%</th><th class="num">匯率報酬%</th><th class="num">台幣調整後報酬%</th><th class="num">對 NAV 貢獻(p.p.)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2"><b>合計</b></td>
+              <td class="num" id="sumWeight2">0.00%</td>
+              <td colspan="7"></td>
+              <td class="num">—</td>
+              <td class="num" id="sumPpts">0.000</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+
+    <footer class="note" style="margin:18px 0 40px">© 名愛軍 · NAV-Lag 助手 · 以 Core10/25 為估算基準。若要全持股版本，可自行擴充資料列。</footer>
+  </div>
+
+<script>
+// ---------- Utilities ----------
+function num(v){ const n=parseFloat(String(v)); return Number.isFinite(n)?n:0; }
+function fmtPct(n,d=3){ return Number.isFinite(n)? (n.toFixed(d)+'%') : '—'; }
+function covLabel(w){ if(w>=95) return '高信心'; if(w>=80) return '中等信心'; return '偏低信心'; }
+function parseDelimitedLine(line){
+  const hasTab = line.indexOf('\\t') >= 0;
+  const delim = hasTab ? '\\t' : ',';
+  const out = []; let cur = ''; let inQ=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch === '\"'){
+      if(inQ && line[i+1]==='\"'){ cur+='\"'; i++; }
+      else inQ = !inQ;
+    }else if(ch===delim && !inQ){ out.push(cur); cur=''; }
+    else cur+=ch;
+  }
+  out.push(cur); return out;
+}
+function stripBOM(s){ return String(s||'').replace(/^\\uFEFF/,''); }
+function parseTextSimple(text){
+  const lines=stripBOM(text).split(/\\r?\\n/).map(l=>l.trim()).filter(Boolean);
+  if(!lines.length) return [];
+  const header=parseDelimitedLine(lines[0]).map(s=>s.trim().toLowerCase());
+  const hasHeader=["ticker","name","ccy","weight","prev","curr","prevfx","currfx"].every(h=>header.includes(h));
+  const body=hasHeader?lines.slice(1):lines;
+  return body.map(l=>parseDelimitedLine(l));
+}
+
+// ---------- State ----------
+const DEFAULT_ROWS=[
+  { ticker:"PLTR", name:"Palantir", ccy:"USD", weight:5.53 },
+  { ticker:"329180.KS", name:"HD Hyundai Heavy", ccy:"KRW", weight:5.32 },
+  { ticker:"012450.KS", name:"Hanwha Aerospace", ccy:"KRW", weight:5.22 },
+  { ticker:"7011.T", name:"Mitsubishi Heavy", ccy:"JPY", weight:5.19 },
+  { ticker:"6701.T", name:"NEC", ccy:"JPY", weight:4.93 },
+  { ticker:"NVDA", name:"NVIDIA", ccy:"USD", weight:4.82 },
+  { ticker:"2330.TW", name:"TSMC", ccy:"TWD", weight:4.66 },
+  { ticker:"6503.T", name:"Mitsubishi Electric", ccy:"JPY", weight:4.61 },
+  { ticker:"GE", name:"GE Aerospace", ccy:"USD", weight:4.43 },
+  { ticker:"6702.T", name:"Fujitsu", ccy:"JPY", weight:4.24 },
+];
+let rows = DEFAULT_ROWS.map(r=>({ ...r, prev:'', curr:'', prevFx: r.ccy==='TWD'?'1':'', currFx: r.ccy==='TWD'?'1':'' }));
+let normalize=false;
+
+// ---------- DOM refs ----------
+const elPrevNav = document.getElementById('prevNav');
+const elOpenPrice = document.getElementById('openPrice');
+const elBuyT = document.getElementById('buyT');
+const elSellT = document.getElementById('sellT');
+const elNormalize = document.getElementById('normalize');
+
+const elOpenMove = document.getElementById('openMove');
+const elPptsRaw = document.getElementById('pptsRaw');
+const elPptsNorm = document.getElementById('pptsNorm');
+const elNavRaw = document.getElementById('navRaw');
+const elNavNorm = document.getElementById('navNorm');
+const elNavFinal = document.getElementById('navFinal');
+const elPremium = document.getElementById('premium');
+const elSignal = document.getElementById('signal');
+const elCoverPct = document.getElementById('coverPct');
+const elCoverLabel = document.getElementById('coverLabel');
+const elCoverBar = document.getElementById('coverBar');
+
+const elSumWeight = document.getElementById('sumWeight');
+const elPptsFinal = document.getElementById('pptsFinal');
+const elPptsDesc = document.getElementById('pptsDesc');
+const elNavRaw2 = document.getElementById('navRaw2');
+const elNavNorm2 = document.getElementById('navNorm2');
+const elNavChosen = document.getElementById('navChosen');
+const elPremium2 = document.getElementById('premium2');
+
+const elMainBody = document.querySelector('#mainTable tbody');
+const elRankBody = document.querySelector('#rankTable tbody');
+const elSumWeight2 = document.getElementById('sumWeight2');
+const elSumPpts = document.getElementById('sumPpts');
+
+const elBandStrong = document.getElementById('bandStrong');
+const elBandMild = document.getElementById('bandMild');
+const elBandMildNeg = document.getElementById('bandMildNeg');
+const elBandStrongNeg = document.getElementById('bandStrongNeg');
+
+// ---------- Render ----------
+function compute(){
+  let totalWeight=0, totalPpts=0;
+  const enriched = rows.map(r=>{
+    const w=num(r.weight), prev=num(r.prev), curr=num(r.curr);
+    const prevFx=(String(r.ccy).toUpperCase()==='TWD')?1:num(r.prevFx);
+    const currFx=(String(r.ccy).toUpperCase()==='TWD')?1:num(r.currFx);
+    const localRet=(prev>0&&curr>0)?(curr/prev-1)*100:0;
+    const fxRet=(prevFx>0&&currFx>0)?(currFx/prevFx-1)*100:0;
+    const adjRet=((1+localRet/100)*(1+fxRet/100)-1)*100;
+    const contrib=(w*adjRet)/100;
+    totalWeight+=w; totalPpts+=contrib;
+    return {...r, localRet, fxRet, adjRet, contrib, w};
+  });
+  const normalizedPpts = totalWeight>0 ? totalPpts*(100/totalWeight) : 0;
+
+  // Dashboard
+  const prev = num(elPrevNav.value);
+  const open = num(elOpenPrice.value);
+  const navRaw = prev>0 ? prev*(1+totalPpts/100) : NaN;
+  const navNorm = prev>0 ? prev*(1+normalizedPpts/100) : NaN;
+  const navChosen = normalize ? navNorm : navRaw;
+  const premPct = (Number.isFinite(navChosen)&&open>0)?(open/navChosen-1)*100:NaN;
+  const movePct = (prev>0&&open>0)?(open/prev-1)*100:NaN;
+  const basePpts = normalize ? normalizedPpts : totalPpts;
+  const deltaTheoretical = Number.isFinite(movePct)? (movePct - basePpts) : NaN;
+
+  // Signal
+  const bt = Math.abs(num(elBuyT.value)||0);
+  const st = Math.abs(num(elSellT.value)||0);
+  let sig='—', sigCls='neu';
+  if(Number.isFinite(deltaTheoretical)){
+    if(deltaTheoretical<=-bt){ sig='BUY'; sigCls='buy'; }
+    else if(deltaTheoretical>=st){ sig='SELL'; sigCls='sell'; }
+    else { sig='NEUTRAL'; sigCls='neu'; }
+  }
+  elSignal.textContent=sig;
+  elSignal.className='chip '+sigCls;
+
+  // Coverage
+  elCoverPct.textContent=(totalWeight.toFixed(2)+'%');
+  elCoverLabel.textContent=covLabel(totalWeight);
+  elCoverBar.style.width=Math.max(0,Math.min(100,totalWeight))+'%';
+
+  // Top summary
+  elOpenMove.textContent=fmtPct(movePct,3);
+  elPptsRaw.textContent=Number.isFinite(totalPpts)? totalPpts.toFixed(3)+'%': '—';
+  elPptsNorm.textContent=Number.isFinite(normalizedPpts)? normalizedPpts.toFixed(3)+'%': '—';
+  elNavRaw.textContent=Number.isFinite(navRaw)? navRaw.toFixed(3):'—';
+  elNavNorm.textContent=Number.isFinite(navNorm)? navNorm.toFixed(3):'—';
+  elNavFinal.textContent=Number.isFinite(navChosen)? navChosen.toFixed(3):'—';
+  elPremium.textContent=fmtPct(premPct,2);
+
+  // Side summary
+  elSumWeight.textContent=totalWeight.toFixed(2)+'%';
+  elPptsFinal.textContent=(normalize?normalizedPpts:totalPpts).toFixed(3);
+  elPptsDesc.textContent = normalize? '（以 100% 權重計算）' : `（以目前 ${totalWeight.toFixed(2)}% 權重計算）`;
+  elNavRaw2.textContent=Number.isFinite(navRaw)? navRaw.toFixed(3):'—';
+  elNavNorm2.textContent=Number.isFinite(navNorm)? navNorm.toFixed(3):'—';
+  elNavChosen.textContent=Number.isFinite(navChosen)? navChosen.toFixed(3):'—';
+  elPremium2.textContent=Number.isFinite(premPct)? premPct.toFixed(2)+'%':'—';
+
+  // Main table
+  elMainBody.innerHTML='';
+  enriched.forEach((r,idx)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `
+      <td><input data-i="${idx}" data-k="ticker" type="text" value="${r.ticker||''}" style="width:120px"></td>
+      <td><input data-i="${idx}" data-k="name" type="text" value="${r.name||''}" style="width:160px"></td>
+      <td class="num"><input data-i="${idx}" data-k="weight" type="number" step="0.01" value="${r.weight||''}" style="width:90px;text-align:right"></td>
+      <td><input data-i="${idx}" data-k="ccy" type="text" value="${r.ccy||''}" style="width:70px;text-align:center"></td>
+      <td class="num"><input data-i="${idx}" data-k="prev" type="number" step="0.0001" value="${r.prev||''}" style="width:110px;text-align:right"></td>
+      <td class="num"><input data-i="${idx}" data-k="curr" type="number" step="0.0001" value="${r.curr||''}" style="width:110px;text-align:right"></td>
+      <td class="num"><input data-i="${idx}" data-k="prevFx" type="number" step="0.0001" value="${r.prevFx||''}" placeholder="${String(r.ccy).toUpperCase()==='TWD'?'1':''}" style="width:120px;text-align:right"></td>
+      <td class="num"><input data-i="${idx}" data-k="currFx" type="number" step="0.0001" value="${r.currFx||''}" placeholder="${String(r.ccy).toUpperCase()==='TWD'?'1':''}" style="width:120px;text-align:right"></td>
+      <td class="num">${fmtPct(r.localRet)}</td>
+      <td class="num">${fmtPct(r.fxRet)}</td>
+      <td class="num"><b>${fmtPct(r.adjRet)}</b></td>
+      <td class="num"><b>${(r.contrib).toFixed(3)}</b></td>
+    `;
+    elMainBody.appendChild(tr);
+  });
+
+  // Rank table
+  const ranked = enriched.map((r,idx)=>({
+    idx, ticker:r.ticker, name:r.name, w:r.w, adjRet:r.adjRet, contrib:r.contrib
+  })).sort((a,b)=>a.adjRet-b.adjRet);
+  elRankBody.innerHTML='';
+  ranked.forEach((r,i)=>{
+    const g = gradeOf(r.adjRet);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td>${i+1}</td>
+      <td>${r.ticker}</td>
+      <td>${r.name}</td>
+      <td class="num">${(r.w||0).toFixed(2)}%</td>
+      <td class="num">${fmtPct(r.adjRet)}</td>
+      <td class="num">${(r.contrib).toFixed(3)}</td>
+      <td>${g}</td>`;
+    elRankBody.appendChild(tr);
+  });
+
+  // Footer sums
+  elSumWeight2.textContent=totalWeight.toFixed(2)+'%';
+  elSumPpts.textContent=totalPpts.toFixed(3);
+}
+function gradeOf(adjRet){
+  const s = num(elBandStrong.value);
+  const m = num(elBandMild.value);
+  const mn = num(elBandMildNeg.value);
+  const sn = num(elBandStrongNeg.value);
+  if(!Number.isFinite(adjRet)) return '<span class="pill p-slate">—</span>';
+  if(adjRet >= s) return '<span class="pill p-rose">強勢/偏貴</span>';
+  if(adjRet >= m) return '<span class="pill p-orange">偏強/略貴</span>';
+  if(adjRet <= sn) return '<span class="pill p-emerald">強弱/偏便宜</span>';
+  if(adjRet <= mn) return '<span class="pill p-emerald2">偏弱/略便宜</span>';
+  return '<span class="pill p-slate">中性</span>';
+}
+
+// ---------- Events ----------
+document.getElementById('btnAdd').addEventListener('click',()=>{
+  rows.push({ticker:'',name:'',ccy:'USD',weight:'',prev:'',curr:'',prevFx:'',currFx:''});
+  compute();
+});
+document.getElementById('btnLoadCsv').addEventListener('click', async ()=>{
+  const url=document.getElementById('csvUrl').value.trim();
+  if(!url) return;
+  try{
+    const res=await fetch(url);
+    const text=await res.text();
+    const parsed=parseTextSimple(text);
+    if(!parsed.length) return;
+    rows = parsed.map(cols=>({
+      ticker:cols[0]||'', name:cols[1]||'',
+      ccy:(cols[2]||'USD').toUpperCase(), weight:cols[3]||'',
+      prev:cols[4]||'', curr:cols[5]||'',
+      prevFx:((cols[2]||'').toUpperCase()==='TWD')?'1':(cols[6]||''),
+      currFx:((cols[2]||'').toUpperCase()==='TWD')?'1':(cols[7]||''),
+    }));
+    compute();
+  }catch(e){
+    alert('載入失敗，請確認連結是否為公開 CSV');
+  }
+});
+['input','change'].forEach(ev=>{
+  document.body.addEventListener(ev,(e)=>{
+    const t=e.target;
+    if(t===elNormalize){ normalize = t.checked; compute(); return; }
+    if(t===elPrevNav || t===elOpenPrice || t===elBuyT || t===elSellT
+      || t===elBandStrong || t===elBandMild || t===elBandMildNeg || t===elBandStrongNeg){
+      compute(); return;
+    }
+    if(t.matches('input[data-i][data-k]')){
+      const i=parseInt(t.getAttribute('data-i'),10);
+      const k=t.getAttribute('data-k');
+      rows[i][k]=t.value;
+      compute();
+      return;
+    }
+  });
+});
+
+// Initial render
+compute();
+</script>
+</body>
+</html>
